@@ -22,7 +22,7 @@
 ## ---------------------------------------------------------------------
 import adcc.block as b
 from adcc.OneParticleOperator import OneParticleOperator
-from adcc.functions import direct_sum, einsum, evaluate
+from adcc.functions import direct_sum, einsum, evaluate, zeros_like
 
 from adcc.solver.conjugate_gradient import conjugate_gradient, default_print
 
@@ -103,14 +103,16 @@ def energy_weighted_density_matrix(hf, g1o, g2a):
 
 class OrbitalResponseMatrix:
     def __init__(self, hf):
-        if hf.has_core_occupied_space:
-            raise NotImplementedError("OrbitalResponseMatrix not implemented "
-                                      "for CVS reference state.")
+        #if hf.has_core_occupied_space:
+        #    raise NotImplementedError("OrbitalResponseMatrix not implemented "
+        #                              "for CVS reference state.")
         self.hf = hf
 
     @property
     def shape(self):
         no1 = self.hf.n_orbs(b.o)
+        if hf.has_core_occupied_space:
+            no1 += self.hf.n_orbs(b.c)
         nv1 = self.hf.n_orbs(b.v)
         size = no1 * nv1
         return (size, size)
@@ -135,11 +137,20 @@ class OrbitalResponseMatrix:
 class OrbitalResponsePinv:
     def __init__(self, hf):
         if hf.has_core_occupied_space:
-            raise NotImplementedError("OrbitalResponsePinv not implemented "
-                                      "for CVS reference state.")
-        fo = hf.fock(b.oo).diagonal()
-        fv = hf.fock(b.vv).diagonal()
-        self.df = direct_sum("-i+a->ia", fo, fv).evaluate()
+            fc = hf.fock(b.cc).diagonal()
+            fo = hf.fock(b.oo).diagonal()
+            fv = hf.fock(b.vv).diagonal()
+            #self.df = zeros_like(hf.fock('ff'))
+            self.df = direct_sum("-i+a->ia", fo, fv).evaluate()
+            #print(dir(self.df))
+            #print(self.df.space)
+            #print(self.df.subspaces)
+        else: 
+            fo = hf.fock(b.oo).diagonal()
+            fv = hf.fock(b.vv).diagonal()
+            self.df = direct_sum("-i+a->ia", fo, fv).evaluate()
+        #print("DF:\n", self.df.shape)
+        #print(self.df)
 
     @property
     def shape(self):
