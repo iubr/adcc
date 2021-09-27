@@ -24,6 +24,10 @@ import adcc.block as b
 from adcc.OneParticleOperator import OneParticleOperator
 from adcc.functions import direct_sum, einsum, evaluate, zeros_like
 
+from adcc.Tensor import Tensor
+from adcc.AmplitudeVector import AmplitudeVector
+import numpy as np
+
 from adcc.solver.conjugate_gradient import conjugate_gradient, default_print
 
 
@@ -34,70 +38,87 @@ def orbital_response_rhs(hf, g1a, g2a):
     """
     # TODO: only add non-zero blocks to equations!
 
-    # equal to the ov block of the energy-weighted density
-    # matrix when lambda_ov multipliers are zero
-    w_ov = 0.5 * (
-        + 1.0 * einsum("ijkl,klja->ia", hf.oooo, g2a.ooov)
-        # - 1.0 * einsum("ibcd,abcd->ia", hf.ovvv, g2a.vvvv)
-        - 1.0 * einsum("jkib,jkab->ia", hf.ooov, g2a.oovv)
-        + 2.0 * einsum("ijkb,jakb->ia", hf.ooov, g2a.ovov)
-        + 1.0 * einsum("ijbc,jabc->ia", hf.oovv, g2a.ovvv)
-        - 2.0 * einsum("ibjc,jcab->ia", hf.ovov, g2a.ovvv)
-    )
-    w_ov = w_ov.evaluate()
+    if hf.has_core_occupied_space:
+        ret_ov = -1.0 * (
+            + 2.0 * einsum("JiKa,JK->ia", hf.cocv, g1a.cc)
+            + 2.0 * einsum("icab,bc->ia", hf.ovvv, g1a.vv)
+        )
 
-    ret = -1.0 * (
-        2.0 * w_ov
-        # - 1.0 * einsum("klja,ijkl->ia", hf.ooov, g2a.oooo)
-        + 1.0 * einsum("abcd,ibcd->ia", hf.vvvv, g2a.ovvv)
-        - 2.0 * einsum("jakb,ijkb->ia", hf.ovov, g2a.ooov)
-        + 1.0 * einsum("jkab,jkib->ia", hf.oovv, g2a.ooov)
-        + 2.0 * einsum("jcab,ibjc->ia", hf.ovvv, g2a.ovov)
-        - 1.0 * einsum("jabc,ijbc->ia", hf.ovvv, g2a.oovv)
-        + 2.0 * einsum("jika,jk->ia", hf.ooov, g1a.oo)
-        + 2.0 * einsum("icab,bc->ia", hf.ovvv, g1a.vv)
-    )
+        ret_cv = -1.0 * (
+            + 2.0 * einsum("JIKa,JK->Ia", hf.cccv, g1a.cc)
+            + 2.0 * einsum("Icab,bc->Ia", hf.cvvv, g1a.vv)
+        )
+
+        ret = AmplitudeVector(ph=ret_cv, pphh=ret_ov)
+        
+    else:
+        # equal to the ov block of the energy-weighted density
+        # matrix when lambda_ov multipliers are zero
+        w_ov = 0.5 * (
+            + 1.0 * einsum("ijkl,klja->ia", hf.oooo, g2a.ooov)
+            # - 1.0 * einsum("ibcd,abcd->ia", hf.ovvv, g2a.vvvv)
+            - 1.0 * einsum("jkib,jkab->ia", hf.ooov, g2a.oovv)
+            + 2.0 * einsum("ijkb,jakb->ia", hf.ooov, g2a.ovov)
+            + 1.0 * einsum("ijbc,jabc->ia", hf.oovv, g2a.ovvv)
+            - 2.0 * einsum("ibjc,jcab->ia", hf.ovov, g2a.ovvv)
+        )
+        w_ov = w_ov.evaluate()
+    
+        ret = -1.0 * (
+            2.0 * w_ov
+            # - 1.0 * einsum("klja,ijkl->ia", hf.ooov, g2a.oooo)
+            + 1.0 * einsum("abcd,ibcd->ia", hf.vvvv, g2a.ovvv)
+            - 2.0 * einsum("jakb,ijkb->ia", hf.ovov, g2a.ooov)
+            + 1.0 * einsum("jkab,jkib->ia", hf.oovv, g2a.ooov)
+            + 2.0 * einsum("jcab,ibjc->ia", hf.ovvv, g2a.ovov)
+            - 1.0 * einsum("jabc,ijbc->ia", hf.ovvv, g2a.oovv)
+            + 2.0 * einsum("jika,jk->ia", hf.ooov, g1a.oo)
+            + 2.0 * einsum("icab,bc->ia", hf.ovvv, g1a.vv)
+        )
     return ret
 
 
 def energy_weighted_density_matrix(hf, g1o, g2a):
-    gi_oo = -0.5 * (
-        # + 1.0 * einsum("jklm,iklm->ij", hf.oooo, g2a.oooo)
-        + 1.0 * einsum("jabc,iabc->ij", hf.ovvv, g2a.ovvv)
-        + 1.0 * einsum("klja,klia->ij", hf.ooov, g2a.ooov)
-        + 2.0 * einsum("jkla,ikla->ij", hf.ooov, g2a.ooov)
-        + 1.0 * einsum("jkab,ikab->ij", hf.oovv, g2a.oovv)
-        + 2.0 * einsum("jakb,iakb->ij", hf.ovov, g2a.ovov)
-    )
-    gi_vv = -0.5 * (
-        + 1.0 * einsum("kjib,kjia->ab", hf.ooov, g2a.ooov)
-        # + einsum("bcde,acde->ab", hf.vvvv, g2a.vvvv)
-        + 1.0 * einsum("ijcb,ijca->ab", hf.oovv, g2a.oovv)
-        + 2.0 * einsum("jcib,jcia->ab", hf.ovov, g2a.ovov)
-        + 1.0 * einsum("ibcd,iacd->ab", hf.ovvv, g2a.ovvv)
-        + 2.0 * einsum("idcb,idca->ab", hf.ovvv, g2a.ovvv)
-    )
-    gi_oo = gi_oo.evaluate()
-    gi_vv = gi_vv.evaluate()
-    w = OneParticleOperator(hf)
-    w.ov = 0.5 * (
-        - 2.0 * einsum("ij,ja->ia", hf.foo, g1o.ov)
-        + 1.0 * einsum("ijkl,klja->ia", hf.oooo, g2a.ooov)
-        # - 1.0 * einsum("ibcd,abcd->ia", hf.ovvv, g2a.vvvv)
-        - 1.0 * einsum("jkib,jkab->ia", hf.ooov, g2a.oovv)
-        + 2.0 * einsum("ijkb,jakb->ia", hf.ooov, g2a.ovov)
-        + 1.0 * einsum("ijbc,jabc->ia", hf.oovv, g2a.ovvv)
-        - 2.0 * einsum("ibjc,jcab->ia", hf.ovov, g2a.ovvv)
-    )
-    w.oo = (
-        + gi_oo - hf.foo
-        - einsum("ik,jk->ij", g1o.oo, hf.foo)
-        - einsum("ikjl,kl->ij", hf.oooo, g1o.oo)
-        - einsum("ikja,ka->ij", hf.ooov, g1o.ov)
-        - einsum("jkia,ka->ij", hf.ooov, g1o.ov)
-        - einsum("jaib,ab->ij", hf.ovov, g1o.vv)
-    )
-    w.vv = gi_vv - einsum("ac,cb->ab", g1o.vv, hf.fvv)
+    if hf.has_core_occupied_space:
+        w = OneParticleOperator(hf)
+    else:
+        gi_oo = -0.5 * (
+            # + 1.0 * einsum("jklm,iklm->ij", hf.oooo, g2a.oooo)
+            + 1.0 * einsum("jabc,iabc->ij", hf.ovvv, g2a.ovvv)
+            + 1.0 * einsum("klja,klia->ij", hf.ooov, g2a.ooov)
+            + 2.0 * einsum("jkla,ikla->ij", hf.ooov, g2a.ooov)
+            + 1.0 * einsum("jkab,ikab->ij", hf.oovv, g2a.oovv)
+            + 2.0 * einsum("jakb,iakb->ij", hf.ovov, g2a.ovov)
+        )
+        gi_vv = -0.5 * (
+            + 1.0 * einsum("kjib,kjia->ab", hf.ooov, g2a.ooov)
+            # + einsum("bcde,acde->ab", hf.vvvv, g2a.vvvv)
+            + 1.0 * einsum("ijcb,ijca->ab", hf.oovv, g2a.oovv)
+            + 2.0 * einsum("jcib,jcia->ab", hf.ovov, g2a.ovov)
+            + 1.0 * einsum("ibcd,iacd->ab", hf.ovvv, g2a.ovvv)
+            + 2.0 * einsum("idcb,idca->ab", hf.ovvv, g2a.ovvv)
+        )
+        gi_oo = gi_oo.evaluate()
+        gi_vv = gi_vv.evaluate()
+        w = OneParticleOperator(hf)
+        w.ov = 0.5 * (
+            - 2.0 * einsum("ij,ja->ia", hf.foo, g1o.ov)
+            + 1.0 * einsum("ijkl,klja->ia", hf.oooo, g2a.ooov)
+            # - 1.0 * einsum("ibcd,abcd->ia", hf.ovvv, g2a.vvvv)
+            - 1.0 * einsum("jkib,jkab->ia", hf.ooov, g2a.oovv)
+            + 2.0 * einsum("ijkb,jakb->ia", hf.ooov, g2a.ovov)
+            + 1.0 * einsum("ijbc,jabc->ia", hf.oovv, g2a.ovvv)
+            - 2.0 * einsum("ibjc,jcab->ia", hf.ovov, g2a.ovvv)
+        )
+        w.oo = (
+            + gi_oo - hf.foo
+            - einsum("ik,jk->ij", g1o.oo, hf.foo)
+            - einsum("ikjl,kl->ij", hf.oooo, g1o.oo)
+            - einsum("ikja,ka->ij", hf.ooov, g1o.ov)
+            - einsum("jkia,ka->ij", hf.ooov, g1o.ov)
+            - einsum("jaib,ab->ij", hf.ovov, g1o.vv)
+        )
+        w.vv = gi_vv - einsum("ac,cb->ab", g1o.vv, hf.fvv)
     return evaluate(w)
 
 
@@ -110,20 +131,47 @@ class OrbitalResponseMatrix:
 
     @property
     def shape(self):
-        no1 = self.hf.n_orbs(b.o)
-        if hf.has_core_occupied_space:
-            no1 += self.hf.n_orbs(b.c)
-        nv1 = self.hf.n_orbs(b.v)
+        no1 = self.hf.mospaces.n_orbs(b.o)
+        if self.hf.has_core_occupied_space:
+            no1 += self.hf.mospaces.n_orbs(b.c)
+        nv1 = self.hf.mospaces.n_orbs(b.v)
         size = no1 * nv1
         return (size, size)
 
     def __matmul__(self, l_ov):
-        ret = (
-            + einsum("ab,ib->ia", self.hf.fvv, l_ov)
-            - einsum("ij,ja->ia", self.hf.foo, l_ov)
-            + einsum("ijab,jb->ia", self.hf.oovv, l_ov)
-            - einsum("ibja,jb->ia", self.hf.ovov, l_ov)
-        )
+        if self.hf.has_core_occupied_space:
+            # This is the OV block (hijacked from AmplitudeVector)
+            # TODO: find a different solution (new class?)
+            print(self.hf.ovcv.shape)
+            print(self.hf.ccvv.shape)
+            print(l_ov['ph'].shape)
+            print(l_ov['pphh'].shape)
+            ret_ov = (
+                + einsum("ab,ib->ia", self.hf.fvv, l_ov['pphh'])
+                - einsum("ij,ja->ia", self.hf.foo, l_ov['pphh'])
+                + einsum("ijab,jb->ia", self.hf.oovv, l_ov['pphh'])
+                - einsum("ibja,jb->ia", self.hf.ovov, l_ov['pphh'])
+                + einsum("iJab,Jb->ia", self.hf.ocvv, l_ov['ph'])
+                - einsum("ibJa,Jb->ia", self.hf.ovcv, l_ov['ph'])
+            )
+            # This is the CV block (hijacked from AmplitudeVector)
+            # TODO: find a different solution (new class?)
+            ret_cv = (
+                + einsum("ab,Ib->Ia", self.hf.fvv, l_ov['ph'])
+                - einsum("IJ,Ja->Ia", self.hf.fcc, l_ov['ph'])
+                + einsum("IJab,Jb->Ia", self.hf.ccvv, l_ov['ph'])
+                - einsum("IbJa,Jb->Ia", self.hf.cvcv, l_ov['ph'])
+                + einsum("Ijab,jb->Ia", self.hf.covv, l_ov['pphh'])
+                - einsum("Ibja,jb->Ia", self.hf.cvov, l_ov['pphh'])
+            )
+            ret = AmplitudeVector(ph=ret_cv, pphh=ret_ov)
+        else:
+            ret = (
+                + einsum("ab,ib->ia", self.hf.fvv, l_ov)
+                - einsum("ij,ja->ia", self.hf.foo, l_ov)
+                + einsum("ijab,jb->ia", self.hf.oovv, l_ov)
+                - einsum("ibja,jb->ia", self.hf.ovov, l_ov)
+            )
         # TODO: generalize once other solvent methods are available
         if self.hf.environment == "pe":
             # PE contribution to the orbital Hessian
@@ -136,15 +184,22 @@ class OrbitalResponseMatrix:
 
 class OrbitalResponsePinv:
     def __init__(self, hf):
+        self.hf = hf
         if hf.has_core_occupied_space:
             fc = hf.fock(b.cc).diagonal()
             fo = hf.fock(b.oo).diagonal()
             fv = hf.fock(b.vv).diagonal()
-            #self.df = zeros_like(hf.fock('ff'))
-            self.df = direct_sum("-i+a->ia", fo, fv).evaluate()
-            #print(dir(self.df))
-            #print(self.df.space)
-            #print(self.df.subspaces)
+            fov = direct_sum("-i+a->ia", fo, fv).evaluate()
+            fcv = direct_sum("-i+a->ia", fc, fv).evaluate()
+
+            # Highjacking AmplitudeVector to store both cv and ov blocks.
+            # 'ph' stores the CV block, 'pphh' stores the OV block.
+            self.df = AmplitudeVector(ph=fcv, pphh=fov)
+            print("CV is stored in 'ph'")
+            print(self.df['ph'])
+            print()
+            print("OV is stored in 'pphh'")
+            print(self.df['pphh'])
         else: 
             fo = hf.fock(b.oo).diagonal()
             fv = hf.fock(b.vv).diagonal()
@@ -154,8 +209,10 @@ class OrbitalResponsePinv:
 
     @property
     def shape(self):
-        no1 = self.hf.n_orbs(b.o)
-        nv1 = self.hf.n_orbs(b.v)
+        no1 = self.hf.mospaces.n_orbs(b.o)
+        if self.hf.has_core_occupied_space:
+            no1 += self.hf.mospaces.n_orbs(b.c)
+        nv1 = self.hf.mospaces.n_orbs(b.v)
         size = no1 * nv1
         return (size, size)
 
@@ -170,9 +227,14 @@ def orbital_response(hf, rhs):
     """
     # TODO: pass solver arguments
     A = OrbitalResponseMatrix(hf)
+    print("SHAPE:", A.shape)
     Pinv = OrbitalResponsePinv(hf)
+    print("SHAPE2:", Pinv.shape)
     x0 = (Pinv @ rhs).evaluate()
     l_ov = conjugate_gradient(A, rhs=rhs, x0=x0, Pinv=Pinv,
                               explicit_symmetrisation=None,
                               callback=default_print)
+    #print(rhs.space)
+    #print(rhs.subspaces)
+    #print(dir(l_ov.solution))
     return l_ov.solution

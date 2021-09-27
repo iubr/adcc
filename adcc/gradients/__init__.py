@@ -77,20 +77,42 @@ def nuclear_gradient(excitation_or_mp):
 
     # build two-particle density matrices for contraction with TEI
     with timer.record("form_tpdm"):
-        delta_ij = hf.density.oo
-        g2_hf = TwoParticleDensityMatrix(hf)
-        g2_hf.oooo = 0.25 * (- einsum("li,jk->ijkl", delta_ij, delta_ij)
-                             + einsum("ki,jl->ijkl", delta_ij, delta_ij))
-
-        g2_oresp = TwoParticleDensityMatrix(hf)
-        g2_oresp.oooo = einsum("ij,kl->kilj", delta_ij, g1o.oo)
-        g2_oresp.ovov = einsum("ij,ab->iajb", delta_ij, g1o.vv)
-        g2_oresp.ooov = (- einsum("kj,ia->ijka", delta_ij, g1o.ov)
-                         + einsum("ki,ja->ijka", delta_ij, g1o.ov))
-
-        # scale for contraction with integrals
-        g2a.oovv *= 0.5
-        g2_total = evaluate(g2_hf + g2a + g2_oresp)
+        if hf.has_core_occupied_space:
+            delta_ij = hf.density.oo
+            delta_IJ = hf.density.cc
+            g2_hf = TwoParticleDensityMatrix(hf)
+            g2_hf.oooo = 0.25 * (- einsum("li,jk->ijkl", delta_ij, delta_ij)
+                                 + einsum("ki,jl->ijkl", delta_ij, delta_ij))
+            g2_hf.cccc = 0.25 * (- einsum("LI,JK->IJKL", delta_IJ, delta_IJ)
+                                 + einsum("KI,JL->IJKL", delta_IJ, delta_IJ))
+            # OCOC NOT correct; TODO: double-check!
+            #g2_hf.ococ = 1.0 * ( - einsum("Li,Jk->iJkL", delta_IJ, delta_IJ)
+            #                     + einsum("Ki,JL->iJkL", delta_IJ, delta_IJ))
+    
+            g2_oresp = TwoParticleDensityMatrix(hf)
+            g2_oresp.cccc = einsum("IJ,KL->KILJ", delta_IJ, g1o.cc) #not sure I understand how these terms work...
+            #g2_oresp.ovov = einsum("ij,ab->iajb", delta_ij, g1o.vv)
+            #g2_oresp.ooov = (- einsum("kj,ia->ijka", delta_ij, g1o.ov)
+            #                 + einsum("ki,ja->ijka", delta_ij, g1o.ov))
+    
+            # scale for contraction with integrals
+            #g2a.oovv *= 0.5
+            g2_total = evaluate(g2_hf + g2a + g2_oresp)
+        else:
+            delta_ij = hf.density.oo
+            g2_hf = TwoParticleDensityMatrix(hf)
+            g2_hf.oooo = 0.25 * (- einsum("li,jk->ijkl", delta_ij, delta_ij)
+                                 + einsum("ki,jl->ijkl", delta_ij, delta_ij))
+    
+            g2_oresp = TwoParticleDensityMatrix(hf)
+            g2_oresp.oooo = einsum("ij,kl->kilj", delta_ij, g1o.oo)
+            g2_oresp.ovov = einsum("ij,ab->iajb", delta_ij, g1o.vv)
+            g2_oresp.ooov = (- einsum("kj,ia->ijka", delta_ij, g1o.ov)
+                             + einsum("ki,ja->ijka", delta_ij, g1o.ov))
+    
+            # scale for contraction with integrals
+            g2a.oovv *= 0.5
+            g2_total = evaluate(g2_hf + g2a + g2_oresp)
 
     with timer.record("transform_ao"):
         g2_ao_1, g2_ao_2 = g2_total.to_ao_basis()
