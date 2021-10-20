@@ -62,6 +62,7 @@ class TwoParticleDensityMatrix:
         if self.mospaces.has_core_occupied_space:
             self.blocks += [
                 b.cccc, b.ococ, b.oooo,  b.cvcv,
+				b.ocov, b.cccv, b.cocv,
             ]
         self._tensors = {}
 

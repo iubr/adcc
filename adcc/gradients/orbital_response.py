@@ -80,7 +80,38 @@ def orbital_response_rhs(hf, g1a, g2a):
 
 def energy_weighted_density_matrix(hf, g1o, g2a):
     if hf.has_core_occupied_space:
+        # CVS-ADC0; TODO: add 2PDM contributions
         w = OneParticleOperator(hf)
+        w.cc = ( 
+            - hf.fcc
+            - einsum("ik,jk->ij", g1o.cc, hf.fcc)
+            - einsum("ab,IaJb->IJ", g1o.vv, hf.cvcv)
+            - einsum("KL,IKJL->IJ", g1o.cc, hf.cccc)
+            + einsum("ka,kJIa->IJ", g1o.ov, hf.occv)
+            + einsum("ka,kIJa->IJ", g1o.ov, hf.occv)
+            + einsum("Ka,KJIa->IJ", g1o.cv, hf.cccv)
+            + einsum("Ka,KIJa->IJ", g1o.cv, hf.cccv)
+        )
+        w.oo = (
+            - hf.foo
+            - einsum("KL,iKjL->ij", g1o.cc, hf.ococ)
+            - einsum("ab,iajb->ij", g1o.vv, hf.ovov)
+            - einsum("ka,ikja->ij", g1o.ov, hf.ooov)
+            - einsum("ka,jkia->ij", g1o.ov, hf.ooov)
+            - einsum("Ka,iKja->ij", g1o.cv, hf.ocov)
+            - einsum("Ka,jKia->ij", g1o.cv, hf.ocov)
+        )
+        w.vv = - einsum("ac,cb->ab", g1o.vv, hf.fvv)
+        w.co = (
+              einsum("KL,iKLJ->Ji", g1o.cc, hf.occc)
+            - einsum("ab,iaJb->Ji", g1o.vv, hf.ovcv)
+            - einsum("Ka,iKJa->Ji", g1o.cv, hf.occv)
+            - einsum("Ka,JKia->Ji", g1o.cv, hf.ccov)
+            - einsum("ka,ikJa->Ji", g1o.ov, hf.oocv)
+            - einsum("ka,Jkia->Ji", g1o.ov, hf.coov)
+        )
+        w.ov = - einsum("ij,ja->ia", hf.foo, g1o.ov)
+        w.cv = - einsum("IJ,Ja->Ia", hf.fcc, g1o.cv)
     else:
         gi_oo = -0.5 * (
             # + 1.0 * einsum("jklm,iklm->ij", hf.oooo, g2a.oooo)
@@ -236,5 +267,6 @@ def orbital_response(hf, rhs):
                               callback=default_print)
     #print(rhs.space)
     #print(rhs.subspaces)
-    #print(dir(l_ov.solution))
+    ##print(dir(l_ov.solution))
+    #print("Solution OV:\n", 0.5*l_ov.solution)
     return l_ov.solution

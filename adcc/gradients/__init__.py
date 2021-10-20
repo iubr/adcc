@@ -67,7 +67,14 @@ def nuclear_gradient(excitation_or_mp):
 
     # orbital-relaxed OPDM (without reference state)
     g1o = g1a.copy()
-    g1o.ov = 0.5 * l_ov
+    if hf.has_core_occupied_space:
+        # For CVS, the solution is stored in an Amplitude
+        # Vector object with th OV block stored in pphh
+        # and the CV block stored in ph
+        g1o.ov = 0.5 * l_ov['pphh']
+        g1o.cv = 0.5 * l_ov['ph'] 
+    else:
+        g1o.ov = 0.5 * l_ov
     # orbital-relaxed OPDM (including reference state)
     g1 = g1o.copy()
     g1 += hf.density
@@ -81,16 +88,38 @@ def nuclear_gradient(excitation_or_mp):
             delta_ij = hf.density.oo
             delta_IJ = hf.density.cc
             g2_hf = TwoParticleDensityMatrix(hf)
-            g2_hf.oooo = 0.25 * (- einsum("li,jk->ijkl", delta_ij, delta_ij)
-                                 + einsum("ki,jl->ijkl", delta_ij, delta_ij))
-            g2_hf.cccc = 0.25 * (- einsum("LI,JK->IJKL", delta_IJ, delta_IJ)
-                                 + einsum("KI,JL->IJKL", delta_IJ, delta_IJ))
-            # OCOC NOT correct; TODO: double-check!
-            #g2_hf.ococ = 1.0 * ( - einsum("Li,Jk->iJkL", delta_IJ, delta_IJ)
-            #                     + einsum("Ki,JL->iJkL", delta_IJ, delta_IJ))
-    
+
+            # I don't understand wy 0.25 is necessary for oooo, but 0.5 for cccc
+            # Doesn't make sense...; TODO: figure out what's going on.
+            g2_hf.oooo = -0.25 * ( einsum("ik,jl->ijkl", delta_ij, delta_ij))
+            g2_hf.cccc = -0.5 * ( einsum("IK,JL->IJKL", delta_IJ, delta_IJ))
+            g2_hf.ococ = -1.0 * ( einsum("ik,JL->iJkL", delta_ij, delta_IJ))
+
+            # from 1pdm with 2e Ints:
+            #g2_hf.oooo += einsum("ik,jl->ijkl", delta_ij, delta_ij)
+            #g2_hf.ococ += 2.0 * einsum("ik,JL->iJkL", delta_ij, delta_IJ)
+            #g2_hf.cccc += einsum("IK,JL->IJKL", delta_IJ, delta_IJ)
+            #g2_hf.ococ += einsum("ik,JL->iJkL", delta_ij, delta_IJ)
+
+            print("G1 HF OO, OO:")
+            print(delta_ij) 
+            # No idea why we need a 0.25 in front of the oooo block...
             g2_oresp = TwoParticleDensityMatrix(hf)
-            g2_oresp.cccc = einsum("IJ,KL->KILJ", delta_IJ, g1o.cc) #not sure I understand how these terms work...
+            g2_oresp.cccc = einsum("IK,JL->IJKL", delta_IJ, g1o.cc+delta_IJ)
+            g2_oresp.ococ = einsum("ik,JL->iJkL", delta_ij, g1o.cc+2*delta_IJ)
+            g2_oresp.oooo = 0.25*einsum("ik,jl->ijkl", delta_ij, delta_ij)
+            g2_oresp.ovov = einsum("ij,ab->iajb", delta_ij, g1o.vv)
+            g2_oresp.cvcv = einsum("IJ,ab->IaJb", delta_IJ, g1o.vv)
+            g2_oresp.ocov = 2*einsum("ik,Ja->iJka", delta_ij, g1o.cv)
+            g2_oresp.cccv = 2*einsum("IK,Ja->IJKa", delta_IJ, g1o.cv)
+
+            g2_oresp.ooov = 2*einsum("ik,ja->ijka", delta_ij, g1o.ov)
+            g2_oresp.cocv = 2*einsum("IK,ja->IjKa", delta_IJ, g1o.ov)
+            
+            #g2_oresp.oooo = einsum("ik,jl->ijkl", delta_ij, g1o.oo)
+            #g2_oresp.ococ = einsum("ik,JL->iJkL", g1o.oo, delta_IJ)  
+            # These are required to avoid using the derivative of the Fock
+            # Matrix; Have to figure out how to use them
             #g2_oresp.ovov = einsum("ij,ab->iajb", delta_ij, g1o.vv)
             #g2_oresp.ooov = (- einsum("kj,ia->ijka", delta_ij, g1o.ov)
             #                 + einsum("ki,ja->ijka", delta_ij, g1o.ov))
