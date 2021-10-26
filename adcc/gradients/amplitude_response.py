@@ -52,6 +52,20 @@ def t2bar_oovv_adc2(exci, g1a_adc0):
     )
     return t2bar
 
+def t2bar_oovv_cvs_adc2(exci, g1a_adc0):
+    mp = exci.ground_state
+    hf = mp.reference_state
+    u = exci.excitation_vector
+    df_ia = mp.df(b.ov)
+    t2bar = 0.5*(
+        - einsum("ijcb,ac->ijab", hf.oovv, g1a_adc0.vv).antisymmetrise((2, 3))
+        ) / (
+            direct_sum("ia+jb->ijab", df_ia, df_ia).symmetrise((0, 1))
+        )
+
+    #TODO: remove print("T2bar:\n",t2bar.evaluate())
+    return t2bar
+
 
 def ampl_relaxed_dms_adc1(exci):
     hf = exci.reference_state
@@ -100,8 +114,60 @@ def ampl_relaxed_dms_cvs_adc1(exci):
     fco = 0.5*direct_sum("-j+I->jI", fc, fo).evaluate()
     # These are the multipliers:
     g1a.co = -0.5 * einsum('JbKc,ibKc->Ji', g2a.cvcv, hf.ovcv) / fco
-    print("L multipliers CO block:\n", g1a.co.evaluate().T)
+    # TODO: print("L multipliers CO block:\n", g1a.co.evaluate().T)
     g1a.vv = +1.0 * einsum("Ia,Ib->ab", u.ph, u.ph)
+    return g1a, g2a
+
+def ampl_relaxed_dms_cvs_adc2(exci):
+    hf = exci.reference_state
+    mp = exci.ground_state
+    u = exci.excitation_vector
+    g1a = OneParticleOperator(hf)
+    g2a = TwoParticleDensityMatrix(hf)
+
+    # Determine the t-amplitudes and multipliers:
+    t2oovv = mp.t2(b.oovv)
+    t2ccvv = mp.t2(b.ccvv)
+    t2ocvv = mp.t2(b.ocvv)
+    g1a_cvs0, g2a_cvs0 = ampl_relaxed_dms_cvs_adc0(exci)
+    t2bar = t2bar_oovv_cvs_adc2(exci, g1a_cvs0).evaluate()
+
+    g2a.cvcv = -1.0 * einsum("Ja,Ib->IaJb", u.ph, u.ph)
+    g1a.cc = (
+        - einsum("Ia,Ja->IJ", u.ph, u.ph)
+        - einsum("kJba,kIba->IJ", u.pphh, u.pphh)
+        - 0.5 * einsum('IKab,JKab->IJ', t2ccvv, t2ccvv)
+        - 0.5 * einsum('kIab,kJab->IJ', t2ocvv, t2ocvv)
+    )
+
+    g1a.oo = ( 
+        - einsum("jKba,iKba->ij", u.pphh, u.pphh)
+        - einsum("ikab,jkab->ij", t2bar, t2oovv) # TODO:
+        - einsum('jkab,ikab->ij', t2oovv, t2bar) # use antisymmetrize
+        - 0.5 * einsum('iKab,jKab->ij', t2ocvv, t2ocvv)
+        - 0.5 * einsum('ikab,jkab->ij', t2oovv, t2oovv)
+    )
+
+    # Pre-requisites for the OC block of the
+    # orbital response Lagrange multipliers:
+    fc = hf.fock(b.cc).diagonal()
+    fo = hf.fock(b.oo).diagonal()
+    fco = 0.5*direct_sum("-j+I->jI", fc, fo).evaluate()
+    # These are the OC multipliers:
+    g1a.co = -0.5 * einsum('JbKc,ibKc->Ji', g2a.cvcv, hf.ovcv) / fco
+
+    #print("L multipliers CO block:\n", g1a.co.evaluate().T)
+    g1a.vv = (
+          einsum("Ia,Ib->ab", u.ph, u.ph)
+        + 2.0 * einsum('jIcb,jIca->ab', u.pphh, u.pphh)
+        + einsum('ijac,ijbc->ab', t2bar, t2oovv)
+        + einsum('ijbc,ijac->ab', t2bar, t2oovv)
+        + 0.5 * einsum('IJac,IJbc->ab', t2ccvv, t2ccvv)
+        + 0.5 * einsum('ijac,ijbc->ab', t2oovv, t2oovv)
+        + einsum('iJac,iJbc->ab', t2ocvv, t2ocvv)
+    )
+
+    print("\n1PDM VV block:\n", g1a.vv.evaluate())
     return g1a, g2a
 
 
@@ -158,6 +224,7 @@ DISPATCH = {
     "adc2": ampl_relaxed_dms_adc2,
     "cvs-adc0": ampl_relaxed_dms_cvs_adc0,
     "cvs-adc1": ampl_relaxed_dms_cvs_adc1,
+    "cvs-adc2": ampl_relaxed_dms_cvs_adc2,
 }
 
 
