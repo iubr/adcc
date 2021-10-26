@@ -90,19 +90,11 @@ def nuclear_gradient(excitation_or_mp):
             g2_hf = TwoParticleDensityMatrix(hf)
 
             # I don't understand wy 0.25 is necessary for oooo, but 0.5 for cccc
-            # Doesn't make sense...; TODO: figure out what's going on.
+            # Doesn't make sense...; TODO: figure it out.
             g2_hf.oooo = -0.25 * ( einsum("ik,jl->ijkl", delta_ij, delta_ij))
             g2_hf.cccc = -0.5 * ( einsum("IK,JL->IJKL", delta_IJ, delta_IJ))
             g2_hf.ococ = -1.0 * ( einsum("ik,JL->iJkL", delta_ij, delta_IJ))
 
-            # from 1pdm with 2e Ints:
-            #g2_hf.oooo += einsum("ik,jl->ijkl", delta_ij, delta_ij)
-            #g2_hf.ococ += 2.0 * einsum("ik,JL->iJkL", delta_ij, delta_IJ)
-            #g2_hf.cccc += einsum("IK,JL->IJKL", delta_IJ, delta_IJ)
-            #g2_hf.ococ += einsum("ik,JL->iJkL", delta_ij, delta_IJ)
-
-            print("G1 HF OO, OO:")
-            print(delta_ij) 
             # No idea why we need a 0.25 in front of the oooo block...
             g2_oresp = TwoParticleDensityMatrix(hf)
             g2_oresp.cccc = einsum("IK,JL->IJKL", delta_IJ, g1o.cc+delta_IJ)
@@ -115,17 +107,9 @@ def nuclear_gradient(excitation_or_mp):
 
             g2_oresp.ooov = 2*einsum("ik,ja->ijka", delta_ij, g1o.ov)
             g2_oresp.cocv = 2*einsum("IK,ja->IjKa", delta_IJ, g1o.ov)
+            g2_oresp.ocoo = 2*einsum("ik,Jl->iJkl", delta_ij, g1o.co)
+            g2_oresp.ccco = 2*einsum("IK,Jl->IJKl", delta_IJ, g1o.co)
             
-            #g2_oresp.oooo = einsum("ik,jl->ijkl", delta_ij, g1o.oo)
-            #g2_oresp.ococ = einsum("ik,JL->iJkL", g1o.oo, delta_IJ)  
-            # These are required to avoid using the derivative of the Fock
-            # Matrix; Have to figure out how to use them
-            #g2_oresp.ovov = einsum("ij,ab->iajb", delta_ij, g1o.vv)
-            #g2_oresp.ooov = (- einsum("kj,ia->ijka", delta_ij, g1o.ov)
-            #                 + einsum("ki,ja->ijka", delta_ij, g1o.ov))
-    
-            # scale for contraction with integrals
-            #g2a.oovv *= 0.5
             g2_total = evaluate(g2_hf + g2a + g2_oresp)
         else:
             delta_ij = hf.density.oo

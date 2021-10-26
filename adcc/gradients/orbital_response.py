@@ -42,12 +42,21 @@ def orbital_response_rhs(hf, g1a, g2a):
         ret_ov = -1.0 * (
             + 2.0 * einsum("JiKa,JK->ia", hf.cocv, g1a.cc)
             + 2.0 * einsum("icab,bc->ia", hf.ovvv, g1a.vv)
+            + 2.0 * einsum("kiJa,Jk->ia", hf.oocv, g1a.co)
+            - 2.0 * einsum("iJka,Jk->ia", hf.ocov, g1a.co)
+            + 2.0*einsum ("iJKb,JaKb->ia", hf.occv, g2a.cvcv) # TODO: new var.
         )
 
         ret_cv = -1.0 * (
             + 2.0 * einsum("JIKa,JK->Ia", hf.cccv, g1a.cc)
             + 2.0 * einsum("Icab,bc->Ia", hf.cvvv, g1a.vv)
+            + 2.0 * einsum("kIJa,Jk->Ia", hf.occv, g1a.co)
+            + 2.0 * einsum("JIka,Jk->Ia", hf.ccov, g1a.co)
+            + 2.0 * einsum("IJKb,JaKb->Ia", hf.cccv, g2a.cvcv) # TODO: new var.
+            + 2.0 * einsum("Jcab,IbJc->Ia", hf.cvvv, g2a.cvcv) # TODO: new var.
         )
+
+        #print("\nRHS OV:\n", ret_cv.evaluate())
 
         ret = AmplitudeVector(ph=ret_cv, pphh=ret_ov)
         
@@ -91,6 +100,9 @@ def energy_weighted_density_matrix(hf, g1o, g2a):
             + einsum("ka,kIJa->IJ", g1o.ov, hf.occv)
             + einsum("Ka,KJIa->IJ", g1o.cv, hf.cccv)
             + einsum("Ka,KIJa->IJ", g1o.cv, hf.cccv)
+            - einsum("Lk,kILJ->IJ", g1o.co, hf.occc)
+            - einsum("Lk,kJLI->IJ", g1o.co, hf.occc)
+            - einsum("JbKc,IbKc->IJ", g2a.cvcv, hf.cvcv)
         )
         w.oo = (
             - hf.foo
@@ -100,8 +112,13 @@ def energy_weighted_density_matrix(hf, g1o, g2a):
             - einsum("ka,jkia->ij", g1o.ov, hf.ooov)
             - einsum("Ka,iKja->ij", g1o.cv, hf.ocov)
             - einsum("Ka,jKia->ij", g1o.cv, hf.ocov)
+            + einsum("Lk,kijL->ij", g1o.co, hf.oooc)
+            + einsum("Lk,kjiL->ij", g1o.co, hf.oooc)
         )
-        w.vv = - einsum("ac,cb->ab", g1o.vv, hf.fvv)
+        w.vv = (
+            - einsum("ac,cb->ab", g1o.vv, hf.fvv)
+            - einsum('JbKc,JaKc->ab', g2a.cvcv, hf.cvcv)
+        )
         w.co = (
               einsum("KL,iKLJ->Ji", g1o.cc, hf.occc)
             - einsum("ab,iaJb->Ji", g1o.vv, hf.ovcv)
@@ -109,9 +126,20 @@ def energy_weighted_density_matrix(hf, g1o, g2a):
             - einsum("Ka,JKia->Ji", g1o.cv, hf.ccov)
             - einsum("ka,ikJa->Ji", g1o.ov, hf.oocv)
             - einsum("ka,Jkia->Ji", g1o.ov, hf.coov)
+            - einsum("Lk,kiLJ->Ji", g1o.co, hf.oocc)
+            + einsum("Lk,iLkJ->Ji", g1o.co, hf.ococ)
+            - einsum("Ik,jk->Ij", g1o.co, hf.foo)
+            - einsum("JbKc,ibKc->Ji", g2a.cvcv, hf.ovcv)
         )
-        w.ov = - einsum("ij,ja->ia", hf.foo, g1o.ov)
-        w.cv = - einsum("IJ,Ja->Ia", hf.fcc, g1o.cv)
+        w.ov = (
+            - einsum("ij,ja->ia", hf.foo, g1o.ov)
+            + einsum("JaKc,iJKc->ia", g2a.cvcv, hf.occv)
+        )
+        w.cv = (
+            - einsum("IJ,Ja->Ia", hf.fcc, g1o.cv)
+            + einsum("JaKc,IJKc->Ia", g2a.cvcv, hf.cccv)
+        )
+        print("\nOMEGA cv:\n", w.cv.evaluate())
     else:
         gi_oo = -0.5 * (
             # + 1.0 * einsum("jklm,iklm->ij", hf.oooo, g2a.oooo)
@@ -173,10 +201,6 @@ class OrbitalResponseMatrix:
         if self.hf.has_core_occupied_space:
             # This is the OV block (hijacked from AmplitudeVector)
             # TODO: find a different solution (new class?)
-            print(self.hf.ovcv.shape)
-            print(self.hf.ccvv.shape)
-            print(l_ov['ph'].shape)
-            print(l_ov['pphh'].shape)
             ret_ov = (
                 + einsum("ab,ib->ia", self.hf.fvv, l_ov['pphh'])
                 - einsum("ij,ja->ia", self.hf.foo, l_ov['pphh'])
@@ -221,22 +245,15 @@ class OrbitalResponsePinv:
             fo = hf.fock(b.oo).diagonal()
             fv = hf.fock(b.vv).diagonal()
             fov = direct_sum("-i+a->ia", fo, fv).evaluate()
-            fcv = direct_sum("-i+a->ia", fc, fv).evaluate()
+            fcv = direct_sum("-I+a->Ia", fc, fv).evaluate()
 
             # Highjacking AmplitudeVector to store both cv and ov blocks.
             # 'ph' stores the CV block, 'pphh' stores the OV block.
             self.df = AmplitudeVector(ph=fcv, pphh=fov)
-            print("CV is stored in 'ph'")
-            print(self.df['ph'])
-            print()
-            print("OV is stored in 'pphh'")
-            print(self.df['pphh'])
         else: 
             fo = hf.fock(b.oo).diagonal()
             fv = hf.fock(b.vv).diagonal()
             self.df = direct_sum("-i+a->ia", fo, fv).evaluate()
-        #print("DF:\n", self.df.shape)
-        #print(self.df)
 
     @property
     def shape(self):
@@ -258,9 +275,7 @@ def orbital_response(hf, rhs):
     """
     # TODO: pass solver arguments
     A = OrbitalResponseMatrix(hf)
-    print("SHAPE:", A.shape)
     Pinv = OrbitalResponsePinv(hf)
-    print("SHAPE2:", Pinv.shape)
     x0 = (Pinv @ rhs).evaluate()
     l_ov = conjugate_gradient(A, rhs=rhs, x0=x0, Pinv=Pinv,
                               explicit_symmetrisation=None,
@@ -268,5 +283,6 @@ def orbital_response(hf, rhs):
     #print(rhs.space)
     #print(rhs.subspaces)
     ##print(dir(l_ov.solution))
-    #print("Solution OV:\n", 0.5*l_ov.solution)
+    print("Solution CV:\n", 0.5*l_ov.solution['ph'])
+    print("\nSolution OV:\n",0.5*l_ov.solution['pphh'])
     return l_ov.solution
