@@ -44,7 +44,17 @@ def orbital_response_rhs(hf, g1a, g2a):
             + 2.0 * einsum("icab,bc->ia", hf.ovvv, g1a.vv)
             + 2.0 * einsum("kiJa,Jk->ia", hf.oocv, g1a.co)
             - 2.0 * einsum("iJka,Jk->ia", hf.ocov, g1a.co)
-            + 2.0*einsum ("iJKb,JaKb->ia", hf.occv, g2a.cvcv) # TODO: new var.
+            + 2.0 * einsum ("iJKb,JaKb->ia", hf.occv, g2a.cvcv) # TODO: new var.
+            + 2.0 * einsum('lKJa,lKiJ->ia', g2a.occv, hf.ococ)
+            + einsum('jabc,ijbc->ia', g2a.ovvv, hf.oovv)
+            - einsum('JKab,JKib->ia', g2a.ccvv, hf.ccov)
+            - 2.0 * einsum('jKab,jKib->ia', g2a.ocvv, hf.ocov)
+            - einsum('jkab,jkib->ia', g2a.oovv, hf.ooov)
+            - 2.0 * einsum('jcab,ibjc->ia', g2a.ovvv, hf.ovov)
+            - 2.0 * einsum('iJKb,JaKb->ia', g2a.occv, hf.cvcv)
+            - einsum('iJbc,Jabc->ia', g2a.ocvv, hf.cvvv)
+            - einsum('ijbc,jabc->ia', g2a.oovv, hf.ovvv)
+            + einsum('ibcd,abcd->ia', g2a.ovvv, hf.vvvv)
         )
 
         ret_cv = -1.0 * (
@@ -54,6 +64,16 @@ def orbital_response_rhs(hf, g1a, g2a):
             + 2.0 * einsum("JIka,Jk->Ia", hf.ccov, g1a.co)
             + 2.0 * einsum("IJKb,JaKb->Ia", hf.cccv, g2a.cvcv) # TODO: new var.
             + 2.0 * einsum("Jcab,IbJc->Ia", hf.cvvv, g2a.cvcv) # TODO: new var.
+            + 2.0 * einsum('lKJa,lKIJ->Ia', g2a.occv, hf.occc)
+            - einsum('jabc,jIbc->Ia', g2a.ovvv, hf.ocvv)
+            - einsum('JKab,JKIb->Ia', g2a.ccvv, hf.cccv)
+            - 2.0 * einsum('jKab,jKIb->Ia', g2a.ocvv, hf.occv)
+            - einsum('jkab,jkIb->Ia', g2a.oovv, hf.oocv)
+            - 2.0 * einsum('jcab,jcIb->Ia', g2a.ovvv, hf.ovcv)
+            - einsum('IJbc,Jabc->Ia', g2a.ccvv, hf.cvvv)
+            + 2.0*einsum('jIKb,jaKb->Ia', g2a.occv, hf.ovcv)
+            + einsum('jIbc,jabc->Ia', g2a.ocvv, hf.ovvv)
+            + 2.0 * einsum('kJIb,kJab->Ia', g2a.occv, hf.ocvv)
         )
 
         #print("\nRHS OV:\n", ret_cv.evaluate())

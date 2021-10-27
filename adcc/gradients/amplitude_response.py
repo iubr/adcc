@@ -111,9 +111,9 @@ def ampl_relaxed_dms_cvs_adc1(exci):
     # orbital response Lagrange multipliers:
     fc = hf.fock(b.cc).diagonal()
     fo = hf.fock(b.oo).diagonal()
-    fco = 0.5*direct_sum("-j+I->jI", fc, fo).evaluate()
+    fco = direct_sum("-j+I->jI", fc, fo).evaluate()
     # These are the multipliers:
-    g1a.co = -0.5 * einsum('JbKc,ibKc->Ji', g2a.cvcv, hf.ovcv) / fco
+    g1a.co = - einsum('JbKc,ibKc->Ji', g2a.cvcv, hf.ovcv) / fco
     # TODO: print("L multipliers CO block:\n", g1a.co.evaluate().T)
     g1a.vv = +1.0 * einsum("Ia,Ib->ab", u.ph, u.ph)
     return g1a, g2a
@@ -132,7 +132,6 @@ def ampl_relaxed_dms_cvs_adc2(exci):
     g1a_cvs0, g2a_cvs0 = ampl_relaxed_dms_cvs_adc0(exci)
     t2bar = t2bar_oovv_cvs_adc2(exci, g1a_cvs0).evaluate()
 
-    g2a.cvcv = -1.0 * einsum("Ja,Ib->IaJb", u.ph, u.ph)
     g1a.cc = (
         - einsum("Ia,Ja->IJ", u.ph, u.ph)
         - einsum("kJba,kIba->IJ", u.pphh, u.pphh)
@@ -152,9 +151,7 @@ def ampl_relaxed_dms_cvs_adc2(exci):
     # orbital response Lagrange multipliers:
     fc = hf.fock(b.cc).diagonal()
     fo = hf.fock(b.oo).diagonal()
-    fco = 0.5*direct_sum("-j+I->jI", fc, fo).evaluate()
-    # These are the OC multipliers:
-    g1a.co = -0.5 * einsum('JbKc,ibKc->Ji', g2a.cvcv, hf.ovcv) / fco
+    fco = direct_sum("-j+I->jI", fc, fo).evaluate()
 
     #print("L multipliers CO block:\n", g1a.co.evaluate().T)
     g1a.vv = (
@@ -167,7 +164,55 @@ def ampl_relaxed_dms_cvs_adc2(exci):
         + einsum('iJac,iJbc->ab', t2ocvv, t2ocvv)
     )
 
-    print("\n1PDM VV block:\n", g1a.vv.evaluate())
+    g2a.cvcv = (
+        - einsum("Ja,Ib->IaJb", u.ph, u.ph)
+        # added by mistake cvs-adc2x TODO: move to adc2x
+        #- 0.5 * einsum('kIbc,kJac->IaJb', u.pphh, u.pphh) # TODO: use antisymm
+        #- 0.5 * einsum('kIcb,kJca->IaJb', u.pphh, u.pphh) # TODO: use antisymm
+        #+ 0.5 * einsum('kIcb,kJac->IaJb', u.pphh, u.pphh) # TODO: use antisymm
+        #+ 0.5 * einsum('kIbc,kJca->IaJb', u.pphh, u.pphh) # TODO: use antisymm
+    )
+
+    # 0.7071067811865475 is 1/sqrt(2); is there a better way to do this?
+    # This factor is needed because of the scaling used in adcc
+    # for the ph-pphh blocks
+    g2a.occv  = 0.7071067811865475 * (
+          einsum('Ib,kJba->kJIa', u.ph, u.pphh) # TODO: use antisymm
+        - einsum('Ib,kJab->kJIa', u.ph, u.pphh)
+    )
+
+    g2a.oovv = (
+         0.5 * einsum('ijcb,ca->ijab', t2oovv, g1a_cvs0.vv)
+        -0.5 * einsum('ijca,cb->ijab', t2oovv, g1a_cvs0.vv)
+        -t2oovv
+        -2.0 * t2bar
+    )
+
+    # 1.414213562373095 is 2/sqrt(2); 
+    # This factor is necessary because of the wa that the ph-pphh is scaled
+    g2a.ovvv = (
+        1.414213562373095 * einsum('Ja,iJcb->iabc', u.ph, u.pphh)
+    )
+    
+    g2a.ccvv = -t2ccvv 
+    
+    g2a.ocvv = -t2ocvv
+
+    # These are the OC multipliers:
+    g1a.co = (
+        - einsum('JbKc,ibKc->Ji', g2a.cvcv, hf.ovcv) 
+        -0.5 * einsum('JKab,iKab->Ji', g2a.ccvv, hf.ocvv)
+        + einsum('kJLa,ikLa->Ji', g2a.occv, hf.oocv)
+        + 0.5 * einsum('kJab,ikab->Ji', g2a.ocvv, hf.oovv)
+        - einsum('kLJa,kLia->Ji', g2a.occv, hf.ocov)
+        + einsum('iKLa,JKLa->Ji', g2a.occv, hf.cccv)
+        + 0.5 * einsum('iKab,JKab->Ji', g2a.ocvv, hf.ccvv)
+        - 0.5 * einsum('ikab,kJab->Ji', g2a.oovv, hf.ocvv)
+        + 0.5 * einsum('iabc,Jabc->Ji', g2a.ovvv, hf.cvvv)
+    ) / fco
+
+    #print("Lambda CO:\n", g1a.co.evaluate().T)
+
     return g1a, g2a
 
 

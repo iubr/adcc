@@ -63,7 +63,7 @@ class TwoParticleDensityMatrix:
             self.blocks += [
                 b.cccc, b.ococ, b.oooo,  b.cvcv,
                 b.ocov, b.cccv, b.cocv, b.ocoo,
-                b.ccco,
+                b.ccco, b.occv, b.ccvv, b.ocvv,
             ]
         self._tensors = {}
 
