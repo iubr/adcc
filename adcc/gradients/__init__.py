@@ -117,7 +117,9 @@ def nuclear_gradient(excitation_or_mp):
             # scale for contraction with integrals
             g2a.oovv *= 0.5
             g2a.ccvv *= 0.5
-            g2a.occv *= 2.0            
+            g2a.occv *= 2.0
+            g2a.vvvv *= 0.25 # Scalin twice is really strange... but the only 
+            g2a.vvvv *= 0.25 # way it works...
 
             g2_total = evaluate(g2_hf + g2a + g2_oresp)
         else:
