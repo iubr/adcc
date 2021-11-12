@@ -67,12 +67,9 @@ def nuclear_gradient(excitation_or_mp):
 
     # orbital-relaxed OPDM (without reference state)
     g1o = g1a.copy()
+    g1o.ov = 0.5 * l.ov
     if hf.has_core_occupied_space:
-        g1o.ov = 0.5 * l.ov
         g1o.cv = 0.5 * l.cv 
-    else:
-		# IB: changed to using AmplitudeVector
-        g1o.ov = 0.5 * l.ov
     # orbital-relaxed OPDM (including reference state)
     g1 = g1o.copy()
     g1 += hf.density

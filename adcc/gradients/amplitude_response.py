@@ -20,6 +20,8 @@
 ## along with adcc. If not, see <http://www.gnu.org/licenses/>.
 ##
 ## ---------------------------------------------------------------------
+from math import sqrt
+
 from adcc.functions import einsum, direct_sum, evaluate
 
 from .TwoParticleDensityMatrix import TwoParticleDensityMatrix
@@ -165,11 +167,10 @@ def ampl_relaxed_dms_cvs_adc2(exci):
         - einsum("Ja,Ib->IaJb", u.ph, u.ph)
     )
 
-    # 0.7071067811865475 is 1/sqrt(2); is there a better way to do this?
     # The factor 1/sqrt(2) is needed because of the scaling used in adcc
     # for the ph-pphh blocks.
-    g2a.occv  = 0.7071067811865475 * (
-          einsum('Ib,kJba->kJIa', u.ph, u.pphh) # TODO: use antisymm
+    g2a.occv  = (1 / sqrt(2)) * (
+          einsum('Ib,kJba->kJIa', u.ph, u.pphh) # TODO: use antisymm?
         - einsum('Ib,kJab->kJIa', u.ph, u.pphh)
     )
 
@@ -180,11 +181,10 @@ def ampl_relaxed_dms_cvs_adc2(exci):
         - 2.0 * t2bar
     )
 
-    # 1.414213562373095 is 2/sqrt(2); 
     # The factor 2/sqrt(2) is necessary because of the way
     # that the ph-pphh is scaled.
-    g2a.ovvv = (
-        1.414213562373095 * einsum('Ja,iJcb->iabc', u.ph, u.pphh)
+    g2a.ovvv = (2 / sqrt(2) ) * (
+		einsum('Ja,iJcb->iabc', u.ph, u.pphh)
     )
     
     g2a.ccvv = -t2ccvv 
@@ -261,11 +261,9 @@ def ampl_relaxed_dms_cvs_adc2x(exci):
         + 0.5 * einsum('kIbc,kJca->IaJb', u.pphh, u.pphh) # TODO: use antisymm?
     )
 
-    # 0.7071067811865475 is 1/sqrt(2); is there a better way to do this?
-    # TODO: check in adc matrix equations if there is a better way to do it.
-    # This factor 1/sqrt(2) is needed because of the scaling used in adcc
+    # The factor 1/sqrt(2) is needed because of the scaling used in adcc
     # for the ph-pphh blocks.
-    g2a.occv  = 0.7071067811865475 * (
+    g2a.occv  = (1 / sqrt(2)) * (
           einsum('Ib,kJba->kJIa', u.ph, u.pphh) # TODO: use antisymm
         - einsum('Ib,kJab->kJIa', u.ph, u.pphh)
     )
@@ -277,11 +275,10 @@ def ampl_relaxed_dms_cvs_adc2x(exci):
         - 2.0 * t2bar
     )
 
-    # 1.414213562373095 is 2/sqrt(2); 
     # The factor 2/sqrt(2) is necessary because of 
     # the way that the ph-pphh is scaled
-    g2a.ovvv = (
-        1.414213562373095 * einsum('Ja,iJcb->iabc', u.ph, u.pphh)
+    g2a.ovvv = (2 / sqrt(2)) * (
+		einsum('Ja,iJcb->iabc', u.ph, u.pphh)
     )
 
     g2a.ovov = 0.5 * (
