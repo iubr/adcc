@@ -39,9 +39,9 @@ def orbital_response_rhs(hf, g1a, g2a):
     # TODO: only add non-zero blocks to equations!
 
     if hf.has_core_occupied_space:
-        # TODO: regular adc first, thn add cvs terms on top?
-        # IB: non-cvs 2PDM has one additional block vs. cvs-adc 2PDM:
-        # ooov; I haven't checked all the pre-factors.
+        # IB: regular adc has three additional terms that do not appear in cvs-adc:
+        # (hf.ooov, g2a.ooov); (hf.ovov, g2a.ooov); (hf.oovv, g2a.ooov);
+		# for all common terms, the pre-factors are the same.
         ret_ov = -1.0 * (
             + 2.0 * einsum("JiKa,JK->ia", hf.cocv, g1a.cc)
             + 2.0 * einsum("icab,bc->ia", hf.ovvv, g1a.vv)
@@ -94,7 +94,7 @@ def orbital_response_rhs(hf, g1a, g2a):
         # equal to the ov block of the energy-weighted density
         # matrix when lambda_ov multipliers are zero
         w_ov = 0.5 * (
-            + 1.0 * einsum("ijkl,klja->ia", hf.oooo, g2a.ooov)
+            + 1.0 * einsum("ijkl,klja->ia", hf.oooo, g2a.ooov) # not in cvs-adc
             # - 1.0 * einsum("ibcd,abcd->ia", hf.ovvv, g2a.vvvv)
             - 1.0 * einsum("jkib,jkab->ia", hf.ooov, g2a.oovv)
             + 2.0 * einsum("ijkb,jakb->ia", hf.ooov, g2a.ovov)
@@ -107,8 +107,8 @@ def orbital_response_rhs(hf, g1a, g2a):
             2.0 * w_ov
             # - 1.0 * einsum("klja,ijkl->ia", hf.ooov, g2a.oooo)
             + 1.0 * einsum("abcd,ibcd->ia", hf.vvvv, g2a.ovvv)
-            - 2.0 * einsum("jakb,ijkb->ia", hf.ovov, g2a.ooov)
-            + 1.0 * einsum("jkab,jkib->ia", hf.oovv, g2a.ooov)
+            - 2.0 * einsum("jakb,ijkb->ia", hf.ovov, g2a.ooov) # not in cvs-adc
+            + 1.0 * einsum("jkab,jkib->ia", hf.oovv, g2a.ooov) # not in cvs-adc
             + 2.0 * einsum("jcab,ibjc->ia", hf.ovvv, g2a.ovov)
             - 1.0 * einsum("jabc,ijbc->ia", hf.ovvv, g2a.oovv)
             + 2.0 * einsum("jika,jk->ia", hf.ooov, g1a.oo)
