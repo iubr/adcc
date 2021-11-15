@@ -153,7 +153,7 @@ def energy_weighted_density_matrix(hf, g1o, g2a):
         )
         w.oo += (
             - hf.foo
-            - einsum("ij,ii->ij", g1o.oo, hf.foo) # TODO: double check
+            - einsum("ij,ii->ij", g1o.oo, hf.foo) #
             - einsum("KL,iKjL->ij", g1o.cc, hf.ococ)
             - einsum("ab,iajb->ij", g1o.vv, hf.ovov)
             - einsum("kl,ikjl->ij", g1o.oo, hf.oooo)

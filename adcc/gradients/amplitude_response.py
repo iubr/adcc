@@ -107,6 +107,7 @@ def ampl_relaxed_dms_cvs_adc1(exci):
     g2a = TwoParticleDensityMatrix(hf)
     g2a.cvcv = - 1.0 * einsum("Ja,Ib->IaJb", u.ph, u.ph)
     g1a.cc = - 1.0 * einsum("Ia,Ja->IJ", u.ph, u.ph)
+    g1a.vv = + 1.0 * einsum("Ia,Ib->ab", u.ph, u.ph)
 
     # Pre-requisites for the OC block of the
     # orbital response Lagrange multipliers:
@@ -115,7 +116,6 @@ def ampl_relaxed_dms_cvs_adc1(exci):
     fco = direct_sum("-j+I->jI", fc, fo).evaluate()
     # These are the multipliers:
     g1a.co = - 1.0 * einsum('JbKc,ibKc->Ji', g2a.cvcv, hf.ovcv) / fco
-    g1a.vv = + 1.0 * einsum("Ia,Ib->ab", u.ph, u.ph)
     return g1a, g2a
 
 def ampl_relaxed_dms_cvs_adc2(exci):
@@ -141,8 +141,8 @@ def ampl_relaxed_dms_cvs_adc2(exci):
 
     g1a.oo = ( 
         - 1.0 * einsum("jKba,iKba->ij", u.pphh, u.pphh)
-        - 1.0 * einsum("ikab,jkab->ij", t2bar, t2oovv) # TODO:
-        - 1.0 * einsum('jkab,ikab->ij', t2oovv, t2bar) # use antisymmetrize
+        - 2.0 * einsum("ikab,jkab->ij", t2bar, t2oovv).symmetrise((0, 1))
+        #- 1.0 * einsum('jkab,ikab->ij', t2oovv, t2bar)
         - 0.5 * einsum('iKab,jKab->ij', t2ocvv, t2ocvv)
         - 0.5 * einsum('ikab,jkab->ij', t2oovv, t2oovv)
     )
@@ -156,8 +156,8 @@ def ampl_relaxed_dms_cvs_adc2(exci):
     g1a.vv = (
         + 1.0 * einsum("Ia,Ib->ab", u.ph, u.ph)
         + 2.0 * einsum('jIcb,jIca->ab', u.pphh, u.pphh)
-        + 1.0 * einsum('ijac,ijbc->ab', t2bar, t2oovv)
-        + 1.0 * einsum('ijbc,ijac->ab', t2bar, t2oovv)
+        + 2.0 * einsum('ijac,ijbc->ab', t2bar, t2oovv).symmetrise((0, 1))
+        #+ 1.0 * einsum('ijbc,ijac->ab', t2bar, t2oovv)
         + 0.5 * einsum('IJac,IJbc->ab', t2ccvv, t2ccvv)
         + 0.5 * einsum('ijac,ijbc->ab', t2oovv, t2oovv)
         + 1.0 * einsum('iJac,iJbc->ab', t2ocvv, t2ocvv)
@@ -170,13 +170,13 @@ def ampl_relaxed_dms_cvs_adc2(exci):
     # The factor 1/sqrt(2) is needed because of the scaling used in adcc
     # for the ph-pphh blocks.
     g2a.occv  = (1 / sqrt(2)) * (
-          einsum('Ib,kJba->kJIa', u.ph, u.pphh) # TODO: use antisymm?
-        - einsum('Ib,kJab->kJIa', u.ph, u.pphh)
+         2.0 * einsum('Ib,kJba->kJIa', u.ph, u.pphh)
+        #- einsum('Ib,kJab->kJIa', u.ph, u.pphh)
     )
 
     g2a.oovv = (
-        + 0.5 * einsum('ijcb,ca->ijab', t2oovv, g1a_cvs0.vv)
-        - 0.5 * einsum('ijca,cb->ijab', t2oovv, g1a_cvs0.vv)
+        + 1.0 * einsum('ijcb,ca->ijab', t2oovv, g1a_cvs0.vv).antisymmetrise((2, 3))
+        #- 0.5 * einsum('ijca,cb->ijab', t2oovv, g1a_cvs0.vv)
         - 1.0 * t2oovv
         - 2.0 * t2bar
     )
@@ -184,7 +184,7 @@ def ampl_relaxed_dms_cvs_adc2(exci):
     # The factor 2/sqrt(2) is necessary because of the way
     # that the ph-pphh is scaled.
     g2a.ovvv = (2 / sqrt(2) ) * (
-		einsum('Ja,iJcb->iabc', u.ph, u.pphh)
+        einsum('Ja,iJcb->iabc', u.ph, u.pphh)
     )
     
     g2a.ccvv = -t2ccvv 
@@ -231,8 +231,8 @@ def ampl_relaxed_dms_cvs_adc2x(exci):
 
     g1a.oo = ( 
         - 1.0 * einsum("jKba,iKba->ij", u.pphh, u.pphh)
-        - 1.0 * einsum("ikab,jkab->ij", t2bar, t2oovv) # TODO:
-        - 1.0 * einsum('jkab,ikab->ij', t2oovv, t2bar) # use antisymmetrize?
+        - 2.0 * einsum("ikab,jkab->ij", t2bar, t2oovv).symmetrise((0, 1))
+        #- 1.0 * einsum('jkab,ikab->ij', t2oovv, t2bar) # use symmetrize?
         - 0.5 * einsum('iKab,jKab->ij', t2ocvv, t2ocvv)
         - 0.5 * einsum('ikab,jkab->ij', t2oovv, t2oovv)
     )
@@ -246,8 +246,8 @@ def ampl_relaxed_dms_cvs_adc2x(exci):
     g1a.vv = (
         + 1.0 * einsum("Ia,Ib->ab", u.ph, u.ph)
         + 2.0 * einsum('jIcb,jIca->ab', u.pphh, u.pphh)
-        + 1.0 * einsum('ijac,ijbc->ab', t2bar, t2oovv)
-        + 1.0 * einsum('ijbc,ijac->ab', t2bar, t2oovv)
+        + 2.0 * einsum('ijac,ijbc->ab', t2bar, t2oovv).symmetrise((0, 1))
+        #+ 1.0 * einsum('ijbc,ijac->ab', t2bar, t2oovv)
         + 0.5 * einsum('IJac,IJbc->ab', t2ccvv, t2ccvv)
         + 0.5 * einsum('ijac,ijbc->ab', t2oovv, t2oovv)
         + 1.0 * einsum('iJac,iJbc->ab', t2ocvv, t2ocvv)
@@ -255,22 +255,22 @@ def ampl_relaxed_dms_cvs_adc2x(exci):
 
     g2a.cvcv = (
         - 1.0 * einsum("Ja,Ib->IaJb", u.ph, u.ph)
-        - 0.5 * einsum('kIbc,kJac->IaJb', u.pphh, u.pphh) # TODO: use antisymm?
-        - 0.5 * einsum('kIcb,kJca->IaJb', u.pphh, u.pphh) # TODO: use antisymm?
-        + 0.5 * einsum('kIcb,kJac->IaJb', u.pphh, u.pphh) # TODO: use antisymm?
-        + 0.5 * einsum('kIbc,kJca->IaJb', u.pphh, u.pphh) # TODO: use antisymm?
+        - 1.0 * einsum('kIbc,kJac->IaJb', u.pphh, u.pphh)
+        #- 0.5 * einsum('kIcb,kJca->IaJb', u.pphh, u.pphh)
+        + 1.0 * einsum('kIcb,kJac->IaJb', u.pphh, u.pphh)
+        #+ 0.5 * einsum('kIbc,kJca->IaJb', u.pphh, u.pphh)
     )
 
     # The factor 1/sqrt(2) is needed because of the scaling used in adcc
     # for the ph-pphh blocks.
     g2a.occv  = (1 / sqrt(2)) * (
-          einsum('Ib,kJba->kJIa', u.ph, u.pphh) # TODO: use antisymm
-        - einsum('Ib,kJab->kJIa', u.ph, u.pphh)
+          2.0 * einsum('Ib,kJba->kJIa', u.ph, u.pphh)
+        #- einsum('Ib,kJab->kJIa', u.ph, u.pphh)
     )
 
     g2a.oovv = (
-        + 0.5 * einsum('ijcb,ca->ijab', t2oovv, g1a_cvs0.vv)
-        - 0.5 * einsum('ijca,cb->ijab', t2oovv, g1a_cvs0.vv)
+        + 1.0 * einsum('ijcb,ca->ijab', t2oovv, g1a_cvs0.vv).antisymmetrise((2, 3))
+        #- 0.5 * einsum('ijca,cb->ijab', t2oovv, g1a_cvs0.vv)
         - 1.0 * t2oovv
         - 2.0 * t2bar
     )
@@ -278,14 +278,14 @@ def ampl_relaxed_dms_cvs_adc2x(exci):
     # The factor 2/sqrt(2) is necessary because of 
     # the way that the ph-pphh is scaled
     g2a.ovvv = (2 / sqrt(2)) * (
-		einsum('Ja,iJcb->iabc', u.ph, u.pphh)
+        einsum('Ja,iJcb->iabc', u.ph, u.pphh)
     )
 
-    g2a.ovov = 0.5 * (
+    g2a.ovov = 1.0 * (
         - einsum("iKbc,jKac->iajb", u.pphh, u.pphh)
-        - einsum("iKcb,jKca->iajb", u.pphh, u.pphh)
+        #- einsum("iKcb,jKca->iajb", u.pphh, u.pphh)
         + einsum("iKcb,jKac->iajb", u.pphh, u.pphh)
-        + einsum("iKbc,jKca->iajb", u.pphh, u.pphh)
+        #+ einsum("iKbc,jKca->iajb", u.pphh, u.pphh)
     )
     
     g2a.ccvv = -t2ccvv 
