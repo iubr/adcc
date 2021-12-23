@@ -86,7 +86,6 @@ class PyScfGradientProvider:
             Gradient["TEI"][ia] -= np.einsum(
                 "pqrs,xpsqr->x", g2_ao_2, ERIx_a, optimize=True
             )
-
         ret = GradientComponents(
             natoms, gradient.grad_nuc(), Gradient["S"],
             Gradient["T+V"], Gradient["TEI"]
