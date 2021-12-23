@@ -22,6 +22,7 @@
 ## ---------------------------------------------------------------------
 import unittest
 import itertools
+
 import adcc
 import adcc.backends
 
@@ -36,9 +37,11 @@ from adcc.testdata.cache import gradient_data
 
 backends = [b for b in adcc.backends.available()
             if b not in ["molsturm", "veloxchem"]]
-molecules = ["h2o"]
-basissets = ["sto3g", "ccpvdz"]
-methods = ["mp2", "adc1", "adc2"]
+
+molecules = gradient_data["molecules"]
+basissets = gradient_data["basissets"]
+methods = gradient_data["methods"]
+
 combinations = list(itertools.product(molecules, basissets, methods, backends))
 
 
@@ -50,19 +53,32 @@ class TestNuclearGradients(unittest.TestCase):
 
         energy_ref = grad_ref["energy"]
         grad_fdiff = grad_ref["gradient"]
+        kwargs = grad_ref["config"]
+        conv_tol = kwargs["conv_tol"]
 
         scfres = cached_backend_hf(backend, molecule, basis, conv_tol=1e-13)
+
         if "adc" in method:
             # TODO: convergence needs to be very very tight...
             # so we want to make sure all vectors are tightly converged
-            n_limit = 5
-            state = adcc.run_adc(scfres, method=method,
-                                 n_singlets=10, conv_tol=1e-11)
+            n_limit = 2
+            kwargs["n_singlets"] = kwargs["n_singlets"] + 6
+            state = adcc.run_adc(scfres, method=method, **kwargs)
             for ee in state.excitations[:n_limit]:
                 grad = adcc.nuclear_gradient(ee)
-                assert_allclose(energy_ref[ee.index], ee.total_energy, atol=1e-10)
+                assert_allclose(energy_ref[ee.index], ee.total_energy,
+                                atol=conv_tol)
+                # check energy computed with unrelaxed densities
+                gs_corr = 0.0
+                if ee.method.level > 0:
+                    gs_corr = ee.ground_state.energy_correction(ee.method.level)
                 assert_allclose(
-                    grad_fdiff[ee.index], grad["Total"], atol=1e-7
+                    gs_corr + ee.excitation_energy,
+                    grad._energy, atol=1e-8
+                )
+                assert_allclose(
+                    grad_fdiff[ee.index], grad.total, atol=1e-7,
+                    err_msg=f'Gradient for state {ee.index} wrong.'
                 )
         else:
             # MP2 gradients
@@ -70,6 +86,10 @@ class TestNuclearGradients(unittest.TestCase):
             mp = adcc.LazyMp(refstate)
             grad = adcc.nuclear_gradient(mp)
             assert_allclose(energy_ref, mp.energy(2), atol=1e-8)
+            # check energy computed with unrelaxed densities
             assert_allclose(
-                grad_fdiff, grad["Total"], atol=1e-8
+                mp.energy_correction(2), grad._energy, atol=1e-8
+            )
+            assert_allclose(
+                grad_fdiff, grad.total, atol=1e-8
             )

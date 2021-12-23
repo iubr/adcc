@@ -20,6 +20,8 @@
 ## along with adcc. If not, see <http://www.gnu.org/licenses/>.
 ##
 ## ---------------------------------------------------------------------
+from math import sqrt
+
 from adcc.functions import einsum, direct_sum, evaluate
 
 from .TwoParticleDensityMatrix import TwoParticleDensityMatrix
@@ -53,14 +55,250 @@ def t2bar_oovv_adc2(exci, g1a_adc0):
     return t2bar
 
 
+def t2bar_oovv_cvs_adc2(exci, g1a_adc0):
+    mp = exci.ground_state
+    hf = mp.reference_state
+    df_ia = mp.df(b.ov)
+    t2bar = 0.5 * (
+        - einsum("ijcb,ac->ijab", hf.oovv, g1a_adc0.vv).antisymmetrise((2, 3))
+    ) / direct_sum("ia+jb->ijab", df_ia, df_ia).symmetrise((0, 1))
+    return t2bar
+
+
 def ampl_relaxed_dms_adc1(exci):
     hf = exci.reference_state
     u = exci.excitation_vector
     g1a = OneParticleOperator(hf)
     g2a = TwoParticleDensityMatrix(hf)
-    g1a.oo = -1.0 * einsum("ia,ja->ij", u.ph, u.ph)
-    g1a.vv = +1.0 * einsum("ia,ib->ab", u.ph, u.ph)
-    g2a.ovov = -1.0 * einsum("ja,ib->iajb", u.ph, u.ph)
+    g1a.oo = - 1.0 * einsum("ia,ja->ij", u.ph, u.ph)
+    g1a.vv = + 1.0 * einsum("ia,ib->ab", u.ph, u.ph)
+    g2a.ovov = - 1.0 * einsum("ja,ib->iajb", u.ph, u.ph)
+    return g1a, g2a
+
+
+def ampl_relaxed_dms_adc0(exci):
+    hf = exci.reference_state
+    u = exci.excitation_vector
+    g1a = OneParticleOperator(hf)
+    g2a = TwoParticleDensityMatrix(hf)
+    # g2a is not required for the adc0 gradient,
+    # but expected by amplitude_relaxed_densities
+    g1a.oo = - 1.0 * einsum("ia,ja->ij", u.ph, u.ph)
+    g1a.vv = + 1.0 * einsum("ia,ib->ab", u.ph, u.ph)
+    return g1a, g2a
+
+
+def ampl_relaxed_dms_cvs_adc0(exci):
+    hf = exci.reference_state
+    u = exci.excitation_vector
+    g1a = OneParticleOperator(hf)
+    g2a = TwoParticleDensityMatrix(hf)
+    # g2a is not required for cvs-adc0 gradient,
+    # but expected by amplitude_relaxed_densities
+    g1a.cc = - 1.0 * einsum("Ia,Ja->IJ", u.ph, u.ph)
+    g1a.vv = + 1.0 * einsum("Ia,Ib->ab", u.ph, u.ph)
+    return g1a, g2a
+
+
+def ampl_relaxed_dms_cvs_adc1(exci):
+    hf = exci.reference_state
+    u = exci.excitation_vector
+    g1a = OneParticleOperator(hf)
+    g2a = TwoParticleDensityMatrix(hf)
+    g2a.cvcv = - 1.0 * einsum("Ja,Ib->IaJb", u.ph, u.ph)
+    g1a.cc = - 1.0 * einsum("Ia,Ja->IJ", u.ph, u.ph)
+    g1a.vv = + 1.0 * einsum("Ia,Ib->ab", u.ph, u.ph)
+
+    # Prerequisites for the OC block of the
+    # orbital response Lagrange multipliers:
+    fc = hf.fock(b.cc).diagonal()
+    fo = hf.fock(b.oo).diagonal()
+    fco = direct_sum("-j+I->jI", fc, fo).evaluate()
+    g1a.co = - 1.0 * einsum('JbKc,ibKc->Ji', g2a.cvcv, hf.ovcv) / fco
+    return g1a, g2a
+
+
+def ampl_relaxed_dms_cvs_adc2(exci):
+    hf = exci.reference_state
+    mp = exci.ground_state
+    u = exci.excitation_vector
+    g1a = OneParticleOperator(hf)
+    g2a = TwoParticleDensityMatrix(hf)
+
+    # Determine the t-amplitudes and multipliers:
+    t2oovv = mp.t2(b.oovv)
+    t2ccvv = mp.t2(b.ccvv)
+    t2ocvv = mp.t2(b.ocvv)
+    g1a_cvs0, g2a_cvs0 = ampl_relaxed_dms_cvs_adc0(exci)
+    t2bar = t2bar_oovv_cvs_adc2(exci, g1a_cvs0).evaluate()
+
+    g1a.cc = (
+        - 1.0 * einsum("Ia,Ja->IJ", u.ph, u.ph)
+        - 1.0 * einsum("kJba,kIba->IJ", u.pphh, u.pphh)
+        - 0.5 * einsum('IKab,JKab->IJ', t2ccvv, t2ccvv)
+        - 0.5 * einsum('kIab,kJab->IJ', t2ocvv, t2ocvv)
+    )
+
+    g1a.oo = (
+        - 1.0 * einsum("jKba,iKba->ij", u.pphh, u.pphh)
+        - 2.0 * einsum("ikab,jkab->ij", t2bar, t2oovv).symmetrise((0, 1))
+        - 0.5 * einsum('iKab,jKab->ij', t2ocvv, t2ocvv)
+        - 0.5 * einsum('ikab,jkab->ij', t2oovv, t2oovv)
+    )
+
+    # Pre-requisites for the OC block of the
+    # orbital response Lagrange multipliers:
+    fc = hf.fock(b.cc).diagonal()
+    fo = hf.fock(b.oo).diagonal()
+    fco = direct_sum("-j+I->jI", fc, fo).evaluate()
+
+    g1a.vv = (
+        + 1.0 * einsum("Ia,Ib->ab", u.ph, u.ph)
+        + 2.0 * einsum('jIcb,jIca->ab', u.pphh, u.pphh)
+        + 2.0 * einsum('ijac,ijbc->ab', t2bar, t2oovv).symmetrise((0, 1))
+        + 0.5 * einsum('IJac,IJbc->ab', t2ccvv, t2ccvv)
+        + 0.5 * einsum('ijac,ijbc->ab', t2oovv, t2oovv)
+        + 1.0 * einsum('iJac,iJbc->ab', t2ocvv, t2ocvv)
+    )
+
+    g2a.cvcv = (
+        - einsum("Ja,Ib->IaJb", u.ph, u.ph)
+    )
+
+    # The factor 1/sqrt(2) is needed because of the scaling used in adcc
+    # for the ph-pphh blocks.
+    g2a.occv = (1 / sqrt(2)) * (
+        2.0 * einsum('Ib,kJba->kJIa', u.ph, u.pphh)
+    )
+
+    g2a.oovv = (
+        + 1.0 * einsum('ijcb,ca->ijab', t2oovv, g1a_cvs0.vv).antisymmetrise((2, 3))
+        - 1.0 * t2oovv
+        - 2.0 * t2bar
+    )
+
+    # The factor 2/sqrt(2) is necessary because of the way
+    # that the ph-pphh is scaled.
+    g2a.ovvv = (2 / sqrt(2)) * (
+        einsum('Ja,iJcb->iabc', u.ph, u.pphh)
+    )
+
+    g2a.ccvv = - 1.0 * t2ccvv
+    g2a.ocvv = - 1.0 * t2ocvv
+
+    # This is the OC block of the orbital response
+    # Lagrange multipliers (lambda):
+    g1a.co = (
+        - 1.0 * einsum('JbKc,ibKc->Ji', g2a.cvcv, hf.ovcv)
+        - 0.5 * einsum('JKab,iKab->Ji', g2a.ccvv, hf.ocvv)
+        + 1.0 * einsum('kJLa,ikLa->Ji', g2a.occv, hf.oocv)
+        + 0.5 * einsum('kJab,ikab->Ji', g2a.ocvv, hf.oovv)
+        - 1.0 * einsum('kLJa,kLia->Ji', g2a.occv, hf.ocov)
+        + 1.0 * einsum('iKLa,JKLa->Ji', g2a.occv, hf.cccv)
+        + 0.5 * einsum('iKab,JKab->Ji', g2a.ocvv, hf.ccvv)
+        - 0.5 * einsum('ikab,kJab->Ji', g2a.oovv, hf.ocvv)
+        + 0.5 * einsum('iabc,Jabc->Ji', g2a.ovvv, hf.cvvv)
+    ) / fco
+
+    return g1a, g2a
+
+
+def ampl_relaxed_dms_cvs_adc2x(exci):
+    hf = exci.reference_state
+    mp = exci.ground_state
+    u = exci.excitation_vector
+    g1a = OneParticleOperator(hf)
+    g2a = TwoParticleDensityMatrix(hf)
+
+    # Determine the t-amplitudes and multipliers:
+    t2oovv = mp.t2(b.oovv)
+    t2ccvv = mp.t2(b.ccvv)
+    t2ocvv = mp.t2(b.ocvv)
+    g1a_cvs0, _ = ampl_relaxed_dms_cvs_adc0(exci)
+    t2bar = t2bar_oovv_cvs_adc2(exci, g1a_cvs0).evaluate()
+
+    g1a.cc = (
+        - 1.0 * einsum("Ia,Ja->IJ", u.ph, u.ph)
+        - 1.0 * einsum("kJba,kIba->IJ", u.pphh, u.pphh)
+        - 0.5 * einsum('IKab,JKab->IJ', t2ccvv, t2ccvv)
+        - 0.5 * einsum('kIab,kJab->IJ', t2ocvv, t2ocvv)
+    )
+
+    g1a.oo = (
+        - 1.0 * einsum("jKba,iKba->ij", u.pphh, u.pphh)
+        - 2.0 * einsum("ikab,jkab->ij", t2bar, t2oovv).symmetrise((0, 1))
+        - 0.5 * einsum('iKab,jKab->ij', t2ocvv, t2ocvv)
+        - 0.5 * einsum('ikab,jkab->ij', t2oovv, t2oovv)
+    )
+
+    # Pre-requisites for the OC block of the
+    # orbital response Lagrange multipliers:
+    fc = hf.fock(b.cc).diagonal()
+    fo = hf.fock(b.oo).diagonal()
+    fco = direct_sum("-j+I->jI", fc, fo).evaluate()
+
+    g1a.vv = (
+        + 1.0 * einsum("Ia,Ib->ab", u.ph, u.ph)
+        + 2.0 * einsum('jIcb,jIca->ab', u.pphh, u.pphh)
+        + 2.0 * einsum('ijac,ijbc->ab', t2bar, t2oovv).symmetrise((0, 1))
+        + 0.5 * einsum('IJac,IJbc->ab', t2ccvv, t2ccvv)
+        + 0.5 * einsum('ijac,ijbc->ab', t2oovv, t2oovv)
+        + 1.0 * einsum('iJac,iJbc->ab', t2ocvv, t2ocvv)
+    )
+
+    g2a.cvcv = (
+        - 1.0 * einsum("Ja,Ib->IaJb", u.ph, u.ph)
+        - 1.0 * einsum('kIbc,kJac->IaJb', u.pphh, u.pphh)
+        + 1.0 * einsum('kIcb,kJac->IaJb', u.pphh, u.pphh)
+    )
+
+    # The factor 1/sqrt(2) is needed because of the scaling used in adcc
+    # for the ph-pphh blocks.
+    g2a.occv = (1 / sqrt(2)) * (
+        2.0 * einsum('Ib,kJba->kJIa', u.ph, u.pphh)
+    )
+
+    g2a.oovv = (
+        + 1.0 * einsum('ijcb,ca->ijab', t2oovv, g1a_cvs0.vv).antisymmetrise((2, 3))
+        - 1.0 * t2oovv
+        - 2.0 * t2bar
+    )
+
+    # The factor 2/sqrt(2) is necessary because of
+    # the way that the ph-pphh is scaled
+    g2a.ovvv = (2 / sqrt(2)) * (
+        einsum('Ja,iJcb->iabc', u.ph, u.pphh)
+    )
+
+    g2a.ovov = 1.0 * (
+        - einsum("iKbc,jKac->iajb", u.pphh, u.pphh)
+        + einsum("iKcb,jKac->iajb", u.pphh, u.pphh)
+    )
+
+    g2a.ccvv = - 1.0 * t2ccvv
+    g2a.ocvv = - 1.0 * t2ocvv
+    g2a.ococ = 1.0 * einsum("iJab,kLab->iJkL", u.pphh, u.pphh)
+    g2a.vvvv = 1.0 * einsum("iJcd,iJab->abcd", u.pphh, u.pphh)
+
+    # TODO: remove
+    # g2a.ococ *= 0.0
+    # g2a.vvvv *= 0.0
+
+    g1a.co = (
+        - 1.0 * einsum('JbKc,ibKc->Ji', g2a.cvcv, hf.ovcv)
+        - 0.5 * einsum('JKab,iKab->Ji', g2a.ccvv, hf.ocvv)
+        + 1.0 * einsum('kJLa,ikLa->Ji', g2a.occv, hf.oocv)
+        + 0.5 * einsum('kJab,ikab->Ji', g2a.ocvv, hf.oovv)
+        - 1.0 * einsum('kLJa,kLia->Ji', g2a.occv, hf.ocov)
+        + 1.0 * einsum('iKLa,JKLa->Ji', g2a.occv, hf.cccv)
+        + 0.5 * einsum('iKab,JKab->Ji', g2a.ocvv, hf.ccvv)
+        - 0.5 * einsum('ikab,kJab->Ji', g2a.oovv, hf.ocvv)
+        + 0.5 * einsum('iabc,Jabc->Ji', g2a.ovvv, hf.cvvv)
+        + 1.0 * einsum('kJmL,ikmL->Ji', g2a.ococ, hf.oooc)
+        - 1.0 * einsum('iKlM,JKMl->Ji', g2a.ococ, hf.ccco)
+        + 1.0 * einsum('iakb,kbJa->Ji', g2a.ovov, hf.ovcv)
+    ) / fco
+
     return g1a, g2a
 
 
@@ -99,6 +337,17 @@ def ampl_relaxed_dms_adc2(exci):
     return g1a, g2a
 
 
+def ampl_relaxed_dms_adc2x(exci):
+    u = exci.excitation_vector
+    g1a, g2a = ampl_relaxed_dms_adc2(exci)
+
+    g2a.ovov += -4.0 * einsum("ikbc,jkac->iajb", u.pphh, u.pphh)
+    g2a.oooo = 2.0 * einsum('ijab,klab->ijkl', u.pphh, u.pphh)
+    g2a.vvvv = 2.0 * einsum('ijcd,ijab->abcd', u.pphh, u.pphh)
+
+    return g1a, g2a
+
+
 def ampl_relaxed_dms_mp2(mp):
     hf = mp.reference_state
     t2 = mp.t2(b.oovv)
@@ -112,8 +361,14 @@ def ampl_relaxed_dms_mp2(mp):
 
 DISPATCH = {
     "mp2":  ampl_relaxed_dms_mp2,
+    "adc0": ampl_relaxed_dms_adc0,
     "adc1": ampl_relaxed_dms_adc1,
     "adc2": ampl_relaxed_dms_adc2,
+    "adc2x": ampl_relaxed_dms_adc2x,
+    "cvs-adc0": ampl_relaxed_dms_cvs_adc0,
+    "cvs-adc1": ampl_relaxed_dms_cvs_adc1,
+    "cvs-adc2": ampl_relaxed_dms_cvs_adc2,
+    "cvs-adc2x": ampl_relaxed_dms_cvs_adc2x,
 }
 
 
