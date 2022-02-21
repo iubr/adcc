@@ -85,7 +85,7 @@ def orbital_response_rhs(hf, g1a, g2a):
             + 2.0 * einsum('kJIb,kJab->Ia', g2a.occv, hf.ocvv)
             - 1.0 * einsum('abcd,Ibcd->Ia', g2a.vvvv, hf.cvvv) # cvs-adc2x
             - 2.0 * einsum('jakb,jIkb->Ia', g2a.ovov, hf.ocov) # cvs-adc2x
-            - 2.0 * einsum('jIlK,lKja->Ia', g2a.ococ, hf.ocov) # cvs-adc2x
+            + 2.0 * einsum('jIlK,lKja->Ia', g2a.ococ, hf.ocov) # cvs-adc2x
         )
 
         ret = AmplitudeVector(cv=ret_cv, ov=ret_ov)
